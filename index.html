@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<title>Aviation Security Alerts</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: ops board — status strip, country chips, filters, then event list beside a sticky source-detail pane */
+:root{
+  --bg:#f3f5f7;--panel:#ffffff;--ink:#0f1720;--muted:#5a6878;--line:#dfe4ea;--chip:#eaeef3;--accent:#1f5fbf;
+  --crit:#b3261e;--high:#c2410c;--med:#a16207;--low:#5b6b7d;--ok:#15803d;
+  --crit-bg:#fbeaea;--high-bg:#fdf0e7;--med-bg:#fbf4e2;
+  --sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0b1016;--panel:#121922;--ink:#e4e9ef;--muted:#8f9cac;--line:#223040;--chip:#1a2430;--accent:#78a9ff;
+  --crit:#ff6b62;--high:#ff9354;--med:#f0c04f;--low:#94a3b5;--ok:#4ade80;
+  --crit-bg:#3a1517;--high-bg:#3a2214;--med-bg:#342a12;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0b1016;--panel:#121922;--ink:#e4e9ef;--muted:#8f9cac;--line:#223040;--chip:#1a2430;--accent:#78a9ff;
+  --crit:#ff6b62;--high:#ff9354;--med:#f0c04f;--low:#94a3b5;--ok:#4ade80;
+  --crit-bg:#3a1517;--high-bg:#3a2214;--med-bg:#342a12;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--sans);margin:0}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--panel)}
+.hrow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:12px}
+h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.1px;text-wrap:balance}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)} .dot.stale{background:var(--crit)}
+.grow{flex:1}
+nav{display:flex;gap:2px;flex-wrap:wrap}
+nav button{background:none;border:0;color:var(--muted);font:inherit;padding:6px 10px;border-radius:6px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--chip);color:var(--ink);font-weight:600}
+button:focus-visible,select:focus-visible,input:focus-visible,.ev:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding-block:14px 0}
+.k{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.k .v{font:600 24px/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.k .l{font-size:12px;color:var(--muted);margin-top:2px}
+.k.crit .v{color:var(--crit)} .k.high .v{color:var(--high)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding-block:12px 0}
+.chip{font:12px var(--sans);padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.chip b{font-family:var(--mono);font-weight:500}
+.chip.s3{background:var(--crit-bg);border-color:var(--crit);color:var(--crit)}
+.chip.s2{background:var(--high-bg);border-color:var(--high);color:var(--high)}
+.chip.s1{background:var(--med-bg);border-color:var(--med);color:var(--med)}
+.chip[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:1px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-block:12px}
+select,input{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+input[type=search]{flex:1;min-width:160px;max-width:320px}
+.note{font-size:12px;color:var(--muted)}
+.board{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:14px;padding-block:0 28px}
+.list{display:flex;flex-direction:column;gap:8px;min-width:0}
+.ev{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--low);border-radius:8px;padding:10px 12px;cursor:pointer;min-width:0}
+.ev:hover{border-color:var(--accent)} .ev[aria-current="true"]{outline:2px solid var(--accent)}
+.ev.s3{border-left-color:var(--crit)} .ev.s2{border-left-color:var(--high)} .ev.s1{border-left-color:var(--med)}
+.ev.done{opacity:.62}
+.now{font-size:13px;margin:0 0 4px;overflow-wrap:anywhere}
+.nowbox{background:var(--chip);border-radius:8px;padding:9px 11px;margin:0 0 12px;font-size:13.5px}
+.pill.old{background:transparent;border:1px solid var(--muted)}
+.meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.ev .t{font-weight:600;margin:5px 0 3px;overflow-wrap:anywhere}
+.pill{font:600 10.5px/1.6 var(--sans);letter-spacing:.4px;padding:0 7px;border-radius:999px;background:var(--chip);color:var(--muted);text-transform:uppercase;white-space:nowrap}
+.pill.s3{background:var(--crit);color:#fff}.pill.s2{background:var(--high);color:#fff}.pill.s1{background:var(--med);color:#16110a}.pill.s0{background:var(--low);color:#fff}
+.pill.c-UNVERIFIED{background:transparent;border:1px dashed var(--muted)}
+.pill.c-CONFIRMED{color:var(--ok)}
+.pill.ack{background:transparent;border:1px solid var(--ok);color:var(--ok)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.detail{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 64px);max-height:calc(100vh - 80px);overflow:auto;min-width:0}
+.detail h2{font-size:16px;margin:8px 0 10px;text-wrap:balance;overflow-wrap:anywhere}
+dl{display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px 10px;font-size:13px;margin:0 0 12px}
+dt{color:var(--muted)} dd{margin:0;overflow-wrap:anywhere}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.btn{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 11px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.src{border-top:1px solid var(--line);padding-block:10px}
+.src .h{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted)}
+.src .h b{color:var(--ink)}
+.src .x{margin-top:4px;overflow-wrap:anywhere}
+.src .why{font-size:11.5px;color:var(--muted);margin-top:3px}
+a{color:var(--accent)}
+.empty{color:var(--muted);padding:28px 16px;text-align:center;border:1px dashed var(--line);border-radius:10px}
+.view[hidden]{display:none!important}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
+th{color:var(--muted);font-weight:600;background:var(--chip)}
+.section{padding-block:16px 28px;display:flex;flex-direction:column;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h3{margin:0 0 6px;font-size:14px}
+.card p{margin:6px 0;max-width:72ch}
+.ok{color:var(--ok)} .bad{color:var(--crit)}
+@media (max-width:900px){.board{grid-template-columns:1fr}.detail{position:static;max-height:none}.strip{grid-template-columns:repeat(2,minmax(0,1fr))}header{position:static}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header>
+  <div class="wrap hrow">
+    <h1>Aviation Security Alerts</h1>
+    <span class="live"><span id="dot" class="dot"></span><span id="lastRun">Loading…</span></span>
+    <span class="grow"></span>
+    <nav role="tablist">
+      <button role="tab" id="tab-board" data-view="board" aria-selected="true">Board</button>
+      <button role="tab" id="tab-items" data-view="items" aria-selected="false">All source items</button>
+      <button role="tab" id="tab-status" data-view="status" aria-selected="false">Sources</button>
+    </nav>
+  </div>
+</header>
+
+<section class="view wrap" id="v-board">
+  <div class="strip">
+    <div class="k crit"><div class="v" id="kCrit">–</div><div class="l">Active critical, not acknowledged</div></div>
+    <div class="k high"><div class="v" id="kHigh">–</div><div class="l">Active high, not acknowledged</div></div>
+    <div class="k"><div class="v" id="kEv">–</div><div class="l">Events in window</div></div>
+    <div class="k"><div class="v" id="kItems">–</div><div class="l">Source items in window</div></div>
+  </div>
+  <div class="chips" id="chips" aria-label="Filter by country"></div>
+  <div class="filters">
+    <select id="fSev" aria-label="Minimum severity"><option value="0" selected>All severities</option><option value="1">Medium and above</option><option value="2">High and above</option><option value="3">Critical only</option></select>
+    <select id="fCat" aria-label="Category"><option value="">All categories</option><option>AIRSPACE</option><option>MILITARY</option><option>AIRPORT</option><option>CIVIL</option></select>
+    <select id="fHours" aria-label="Time window"><option value="24">Last 24 h</option><option value="72">Last 3 days</option><option value="168">Last 7 days</option><option value="336" selected>Last 14 days</option><option value="720">Last 30 days</option></select>
+    <select id="fState" aria-label="Situation"><option value="active" selected>Current situations</option><option value="all">Current and resolved</option><option value="pending">Pending verification (hidden alerts)</option><option value="resolved">Resolved / expired only</option></select>
+    <select id="fStatus" aria-label="Status"><option value="">Any status</option><option value="NEW">Not acknowledged</option><option value="ACK">Acknowledged</option></select>
+    <input type="search" id="fQ" placeholder="Search airport, country, text" aria-label="Search">
+    <span class="note" id="count"></span>
+    <span class="grow"></span>
+    <button class="btn primary" id="bRefresh" title="Scan all sources now and load the newest verified alerts">Refresh now</button>
+    <button class="btn" id="bXlsx">Download Excel</button>
+    <button class="btn" id="bPdf">Download PDF</button>
+    <span class="note" id="msg" role="status"></span>
+  </div>
+  <div class="board">
+    <div class="list" id="list"><div class="empty">Loading events…</div></div>
+    <aside class="detail" id="detail"><div class="empty">Pick an event to see each source item, why it was flagged, and why it was flagged.</div></aside>
+  </div>
+</section>
+
+<section class="view wrap section" id="v-items" hidden>
+  <p class="note">Every individual source item, newest first. Items describing the same incident are grouped under one event on the Board.</p>
+  <div class="tablebox"><table><thead><tr><th>Time (UAE)</th><th>Severity</th><th>Category</th><th>Source</th><th>Item</th></tr></thead><tbody id="items"></tbody></table></div>
+</section>
+
+<section class="view wrap section" id="v-status" hidden>
+  <div class="card" id="runCard"><h3>Monitoring run</h3><p class="note">Waiting for the first run report.</p></div>
+  <div class="card">
+    <h3>How this board is fed</h3>
+    <p>An automated scraper runs automatically about every 5-10 minutes without anyone being online, and <b>Refresh now</b> starts an immediate scan. It reads regulator and risk-service pages (EASA CZIBs, Safe Airspace), news feeds (Al Jazeera, BBC, The National, Arab News, Middle East Eye, Times of Israel), aviation media (Aviation Herald, Simple Flying, Wego) and a set of Google News searches that aggregate Reuters, AP, AFP, Gulf News, Khaleej Times and others. Only items with a direct aviation impact are kept (airspace and FIR status, NOTAMs and CZIBs, airport attacks or closures, airline suspensions and diversions, threats to aircraft, GNSS interference). Items about the same incident are grouped into one event. Before an alert is shown it must be corroborated by at least two independent outlets or one official/risk source; single-source items are held back as "Pending verification" and cross-checked against other outlets. Reports that look like old news (past-year headlines, "recap/what we know" wording, headlines dated days earlier) are rejected, and later re-reports of an older incident are attached to it without raising a new alert.</p>
+    <p><b>Confidence</b> follows the best source: CONFIRMED (regulator or authority), RELIABLE (risk service, or 3+ independent reports), REPORTED (news agency), UNVERIFIED (individual reporter only).</p>
+    <p class="note"><b>Open-source awareness only.</b> Check official NOTAMs, AIP SUPs and CZIBs before any operational decision.</p>
+  </div>
+  
+  <div class="tablebox"><table><thead><tr><th>Source checked</th><th>Result</th><th>Note</th></tr></thead><tbody id="srcRows"></tbody></table></div>
+</section>
+
+<script>
+const _h=location.hostname.endsWith(".github.io")?location.hostname.split(".")[0]:"", _p=location.pathname.split("/")[1]||"";
+const REPO=(_h&&_p)?_h+"/"+_p:"OWNER/REPO", WF="scrape.yml";
+const RAW = REPO.startsWith("OWNER") ? "" : "https://raw.githubusercontent.com/"+REPO+"/main/";
+let CFG = {}; fetch("config.json?t="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.json():{}).then(j=>{CFG=j||{};}).catch(()=>{});
+async function getJSON(name){
+  if (RAW) { try { const r = await fetch(RAW+name+"?t="+Date.now(),{cache:"no-store"}); if (r.ok) return await r.json(); } catch(e){} }
+  const r = await fetch(name+"?t="+Date.now(),{cache:"no-store"}); if (!r.ok) throw new Error("HTTP "+r.status); return r.json();
+}
+const SEV = {LOW:0, MEDIUM:1, HIGH:2, CRITICAL:3};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const toMs = v => typeof v === "number" ? (v < 1e12 ? v*1000 : v) : Date.parse(v);
+const fmt = v => { const d = new Date(toMs(v)); return isNaN(d) ? "–" : d.toLocaleString("en-GB",{timeZone:"Asia/Dubai",day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit",hour12:false}); };
+const ago = v => { const m = Math.round((Date.now()-toMs(v))/60000); return isNaN(m) ? "" : m<1?"just now":m<60?m+" min ago":m<1440?Math.round(m/60)+" h ago":Math.round(m/1440)+" d ago"; };
+
+let events = [], acks = {}, status = null, sel = null, country = "", db = null, user = null, me = null, canAck = false, lastRows = [];
+try { sel = (location.hash || "").slice(1) || null; } catch(e) {}
+
+function prefs(){ try { const p = JSON.parse(localStorage.getItem("meAlertsFilters3")||"{}"); for (const k of ["fSev","fCat","fHours","fStatus","fState"]) if (p[k] != null) $("#"+k).value = p[k]; } catch(e){} }
+function savePrefs(){ try { localStorage.setItem("meAlertsFilters3", JSON.stringify({fSev:$("#fSev").value,fCat:$("#fCat").value,fHours:$("#fHours").value,fStatus:$("#fStatus").value,fState:$("#fState").value})); } catch(e){} }
+
+const expired = e => !!e.valid_until && toMs(e.valid_until) < Date.now();
+// an event with no explicit status counts as current only for 48 h after its last report
+const unconfirmedOld = e => !e.status && (Date.now() - toMs(e.last_seen)) > 48*3600e3;
+const isActive = e => e.status !== "RESOLVED" && !expired(e) && !unconfirmedOld(e);
+const stateLabel = e => e.status === "RESOLVED" ? "Resolved" : expired(e) ? "Expired" : unconfirmedOld(e) ? "Not re-confirmed" : "";
+let remoteAcks = {}, localAcks = {}; try { localAcks = JSON.parse(localStorage.getItem("avAcks")||"{}"); } catch(e){}
+function mergeAcks(){ acks = {...remoteAcks}; for (const k in localAcks){ if (localAcks[k]===null) delete acks[k]; else if (!acks[k] || localAcks[k].at >= acks[k].at) acks[k] = localAcks[k]; } }
+const statusOf = e => (acks[e.id] && acks[e.id].status) || "NEW";
+
+function visible(){
+  const since = Date.now() - (+$("#fHours").value)*3600e3;
+  const sv = $("#fState").value;
+  if (sv === "pending") return events.filter(e => e.verification === "PENDING");
+  return events.filter(e => e.verification !== "PENDING" && (toMs(e.last_seen) >= since || isActive(e)) && (!$("#fCat").value || e.category === $("#fCat").value) &&
+    (sv === "all" || (sv === "active" ? isActive(e) : !isActive(e))));
+}
+
+function render(){ try { renderInner(); } catch(err) { console.error(err); $("#list").innerHTML = `<div class="empty">Display error: ${esc(err && err.message)}. Reload the page.</div>`; } }
+function showAll(){ $("#fSev").value="0"; $("#fCat").value=""; $("#fHours").value="720"; $("#fStatus").value=""; $("#fState").value="all"; $("#fQ").value=""; country=""; savePrefs(); render(); }
+function renderInner(){
+  const win = visible();
+  const q = $("#fQ").value.trim().toLowerCase(), minSev = +$("#fSev").value, st = $("#fStatus").value;
+  // KPIs
+  $("#kCrit").textContent = win.filter(e => isActive(e) && e.severity==="CRITICAL" && statusOf(e)==="NEW").length;
+  $("#kHigh").textContent = win.filter(e => isActive(e) && e.severity==="HIGH" && statusOf(e)==="NEW").length;
+  $("#kEv").textContent = win.length;
+  $("#kItems").textContent = win.reduce((n,e) => n + (e.items||[]).length, 0);
+  // country chips
+  const heat = {};
+  win.forEach(e => (e.countries||[]).forEach(c => { const h = heat[c] ||= {n:0,s:0}; h.n++; h.s = Math.max(h.s, SEV[e.severity]); }));
+  $("#chips").innerHTML = Object.entries(heat).sort((a,b)=>b[1].s-a[1].s||b[1].n-a[1].n)
+    .map(([c,h]) => `<button class="chip s${h.s}" data-c="${esc(c)}" aria-pressed="${country===c}">${esc(c)} <b>${h.n}</b></button>`).join("");
+  // list
+  const rows = win.filter(e => SEV[e.severity] >= minSev && (!country || (e.countries||[]).includes(country)) &&
+      (!st || statusOf(e)===st || (st==="ACK" && statusOf(e)==="CLOSED")) &&
+      (!q || JSON.stringify([e.title,e.countries,e.airports,e.firs,(e.items||[]).map(i=>i.text)]).toLowerCase().includes(q)))
+    .sort((a,b) => (isActive(a)?0:1) - (isActive(b)?0:1) || (statusOf(a)==="NEW"?0:1) - (statusOf(b)==="NEW"?0:1) || SEV[b.severity]-SEV[a.severity] || toMs(b.last_seen)-toMs(a.last_seen));
+  lastRows = rows; $("#count").textContent = `${rows.length} event${rows.length===1?"":"s"}`;
+  $("#list").innerHTML = rows.length ? rows.map(e => { const s = statusOf(e); return `
+    <div class="ev s${SEV[e.severity]} ${s!=="NEW"||!isActive(e)?"done":""}" tabindex="0" role="button" data-id="${esc(e.id)}" aria-current="${e.id===sel}">
+      <div class="meta"><span class="pill s${SEV[e.severity]}">${e.severity}</span><span class="pill">${esc(e.category)}</span>
+        <span class="pill c-${esc(e.confidence)}">${esc(e.confidence)}</span>${e.independent_sources?`<span class="pill">${e.independent_sources} sources</span>`:""}${e.verification==="PENDING"?`<span class="pill old">Unverified</span>`:""}${s!=="NEW"?`<span class="pill ack">${s==="CLOSED"?"Closed":"Acknowledged"}</span>`:""}${stateLabel(e)?`<span class="pill old">${stateLabel(e)}</span>`:""}
+        <span>${esc((e.countries||[]).join(", "))}${(e.airports||[]).length?" · <span class='mono'>"+esc(e.airports.join(" "))+"</span>":""}</span>
+        <span class="grow"></span><span title="${fmt(e.last_seen)}">${ago(e.last_seen)}</span></div>
+      <div class="t" dir="auto">${esc(e.title)}</div>
+      ${e.current?`<div class="now"><b>${isActive(e)?"Now":"Outcome"}:</b> ${esc(e.current)}</div>`:""}
+      <div class="meta"><span>${(e.items||[]).length} source item${(e.items||[]).length===1?"":"s"}</span>${e.valid_until?`<span>· valid until <span class="mono">${fmt(e.valid_until)}</span></span>`:""}${e.verified_at?`<span>· verified ${ago(e.verified_at)}</span>`:""}<span>· first seen <span class="mono">${fmt(e.first_seen)}</span></span></div>
+    </div>`; }).join("") : `<div class="empty">${events.length ? `${events.length} event(s) are stored but hidden by the current filters. <button class='btn' id='showAll'>Show all events</button>` : "No events recorded yet. The hourly monitoring run adds them here."}</div>`;
+  renderDetail(); renderItems(); renderStatus();
+}
+
+function renderDetail(){
+  const e = events.find(x => x.id === sel);
+  if (!e) { $("#detail").innerHTML = `<div class="empty">Pick an event to see each source item, why it was flagged, and why it was flagged.</div>`; return; }
+  const a = acks[e.id], s = statusOf(e);
+  const items = [...(e.items||[])].sort((x,y) => toMs(y.published_at)-toMs(x.published_at));
+  $("#detail").innerHTML = `
+    <div class="meta"><span class="pill s${SEV[e.severity]}">${e.severity}</span><span class="pill">${esc(e.category)}</span><span class="pill c-${esc(e.confidence)}">${esc(e.confidence)}</span>${e.independent_sources?`<span class="pill">${e.independent_sources} sources</span>`:""}${e.verification==="PENDING"?`<span class="pill old">Unverified</span>`:""}${s!=="NEW"?`<span class="pill ack">${s==="CLOSED"?"Closed":"Acknowledged"}</span>`:""}</div>
+    <h2 dir="auto">${esc(e.title)}</h2>
+    ${e.current?`<div class="nowbox"><b>${isActive(e)?"Current situation":"Outcome"}${e.verified_at?` (verified ${fmt(e.verified_at)} UAE)`:""}:</b> ${esc(e.current)}</div>`:""}
+    ${e.summary?`<p style="margin:0 0 10px">${esc(e.summary)}</p>`:""}
+    <dl>
+      <dt>Countries</dt><dd>${esc((e.countries||[]).join(", ")||"–")}</dd>
+      <dt>FIRs</dt><dd class="mono">${esc((e.firs||[]).join(" ")||"–")}</dd>
+      <dt>Airports</dt><dd class="mono">${esc((e.airports||[]).join(" ")||"–")}</dd>
+      <dt>Verification</dt><dd>${esc(e.verification_note||"Curated and analyst-verified")}</dd>
+      <dt>Situation</dt><dd>${isActive(e)?"Active":stateLabel(e)}${e.valid_until?` · valid until <span class="mono">${fmt(e.valid_until)}</span> UAE`:""}</dd>
+      <dt>First / latest</dt><dd><span class="mono">${fmt(e.first_seen)} → ${fmt(e.last_seen)}</span> UAE</dd>
+      ${e.ops_note?`<dt>Ops note</dt><dd>${esc(e.ops_note)}</dd>`:""}
+      ${a?`<dt>Status</dt><dd>${s==="CLOSED"?"Closed":"Acknowledged"} <span class="mono">${fmt(a.at)}</span> by <span id="ackBy">…</span></dd>`:""}
+    </dl>
+    <div class="btns">
+      <button class="btn primary" data-ack="ACK">Acknowledge</button>
+      <button class="btn" data-ack="CLOSED">Close</button>
+      <button class="btn" data-ack="NEW" ${a?"":"disabled"}>Re-open</button>
+      <span class="note" id="ackMsg"></span>
+    </div>
+    ${items.map(i => `<div class="src">
+      <div class="h"><b>${esc(i.source_name)}</b><span class="pill">${esc(i.tier)}</span><span class="mono">${fmt(i.published_at)}</span>${i.url?`<a href="${esc(i.url)}" target="_blank" rel="noopener">Open source ↗</a>`:""}</div>
+      <div class="x" dir="auto">${esc(i.text)}</div>
+      ${i.reasons?`<div class="why">Flagged for: ${esc([].concat(i.reasons).join(" · "))}</div>`:""}
+    </div>`).join("")}`;
+  { const n = $("#ackBy"); if (n) n.textContent = (a && a.by) || "a colleague"; }
+}
+
+function renderItems(){
+  const all = [];
+  visible().forEach(e => (e.items||[]).forEach(i => all.push({...i, sev:e.severity, cat:e.category})));
+  all.sort((a,b) => toMs(b.published_at)-toMs(a.published_at));
+  $("#items").innerHTML = all.length ? all.map(i => `<tr><td class="mono" style="white-space:nowrap">${fmt(i.published_at)}</td><td><span class="pill s${SEV[i.sev]}">${i.sev}</span></td><td>${esc(i.cat)}</td><td>${esc(i.source_name)} <span class="pill">${esc(i.tier)}</span></td><td dir="auto">${esc(i.text)} ${i.url?`<a href="${esc(i.url)}" target="_blank" rel="noopener">↗</a>`:""}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="note">No source items in this window.</td></tr>`;
+}
+
+function renderStatus(){
+  if (!status) return;
+  const stale = Date.now() - toMs(status.last_run) > 45*60e3;
+  $("#dot").classList.toggle("stale", stale);
+  $("#lastRun").textContent = `Last monitoring run ${ago(status.last_run)}${stale?" (overdue)":""}`;
+  $("#runCard").innerHTML = `<h3>Monitoring run</h3>
+    <p>Last run <span class="mono">${fmt(status.last_run)}</span> UAE · ${status.items_found ?? 0} new item(s) · ${status.new_events ?? 0} new event(s)${status.next_run?` · next about <span class="mono">${fmt(status.next_run)}</span>`:""}</p>
+    ${status.note?`<p class="note">${esc(status.note)}</p>`:""}`;
+  $("#srcRows").innerHTML = (status.sources||[]).map(s => `<tr><td>${esc(s.name)}</td><td class="${s.ok?"ok":"bad"}">${s.ok?"Checked":"Not reachable"}</td><td>${esc(s.note||"")}</td></tr>`).join("");
+}
+
+/* events */
+$("#list").addEventListener("click", ev => { if (ev.target.closest("#showAll")) { showAll(); return; } const n = ev.target.closest(".ev"); if (n) pick(n.dataset.id); });
+$("#list").addEventListener("keydown", ev => { const n = ev.target.closest(".ev"); if (n && (ev.key==="Enter"||ev.key===" ")) { ev.preventDefault(); pick(n.dataset.id); } });
+function pick(id){ sel = id; try { history.replaceState(null,"","#"+id); } catch(e){} render(); if (innerWidth < 900) $("#detail").scrollIntoView({behavior:"smooth"}); }
+$("#chips").addEventListener("click", ev => { const b = ev.target.closest(".chip"); if (!b) return; country = country===b.dataset.c ? "" : b.dataset.c; render(); });
+["#fSev","#fCat","#fHours","#fStatus","#fState"].forEach(s => $(s).addEventListener("change", () => { savePrefs(); render(); }));
+let qt; $("#fQ").addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(render, 200); });
+$("#detail").addEventListener("click", ev => { const b = ev.target.closest("[data-ack]"); if (b && sel) setAck(sel, b.dataset.ack); });
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x===b));
+  document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "v-"+b.dataset.view);
+}));
+setInterval(render, 60000);   // keep "x min ago" honest
+
+/* data */
+prefs();
+async function load(){
+  try {
+    const d = await getJSON("data.json");
+    events = d.events || []; status = d.status || null;
+    try { remoteAcks = await getJSON("acks.json"); } catch(e){}
+    mergeAcks(); render();
+  } catch(e) {
+    console.error(e);
+    if (!events.length) $("#list").innerHTML = `<div class="empty">Could not load data.json (${esc(e.message)}). Reload the page.</div>`;
+    $("#lastRun").textContent = "Update failed – retrying"; $("#dot").classList.add("stale");
+  }
+}
+$("#lastRun").textContent = "Loading events…";
+load(); setInterval(load, 60*1000);   // re-check for new data every minute
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" defer></script>
+<script>
+const msg=t=>{const n=$("#msg"); if(n) n.textContent=t||"";};
+const dstr=()=>new Date().toISOString().slice(0,16).replace(/[-:T]/g,"").replace(/^(\d{8})/,"$1-");
+const utc=v=>{const d=new Date(toMs(v)); return isNaN(d)?"":d.toISOString().slice(0,16).replace("T"," ")+"Z";};
+const rowsX=()=>lastRows.length?lastRows:visible();
+const stateTxt=e=>isActive(e)?"Active":(stateLabel(e)||"Resolved");
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+$("#bRefresh").addEventListener("click",async()=>{
+  const b=$("#bRefresh"); b.disabled=true; const before=status&&status.last_run;
+  try{
+    if(CFG.trigger_url){
+      msg("Starting a live scan of all sources…");
+      let ok=false; try{ const r=await fetch(CFG.trigger_url,{method:"POST"}); ok=r.ok; }catch(e){}
+      if(!ok){ await load(); msg("Live scan service not reachable; showing the latest published data ("+utc(status&&status.last_run)+")."); return; }
+      msg("Scanning sources and verifying alerts (about 1-3 minutes)…");
+      for(let i=0;i<30;i++){ await sleep(10000); await load(); if(status&&status.last_run!==before){ msg("Updated "+utc(status.last_run)+": "+(status.items_found||0)+" new item(s), "+(status.new_events||0)+" new event(s)."); return; } }
+      msg("Scan is still running; the board updates by itself when it finishes.");
+    } else { await load(); msg("Reloaded latest data ("+utc(status&&status.last_run)+"). Live scan service is not set up yet (see setup guide)."); }
+  } finally { b.disabled=false; }
+});
+$("#bXlsx").addEventListener("click",()=>{
+  if(!window.XLSX){msg("Excel library did not load; check your connection.");return;}
+  const ev=rowsX(), wb=XLSX.utils.book_new();
+  const A=ev.map(e=>({Severity:e.severity,Category:e.category,Confidence:e.confidence,Situation:stateTxt(e),Countries:(e.countries||[]).join(", "),Airports:(e.airports||[]).join(" "),FIRs:(e.firs||[]).join(" "),Title:e.title,"Current situation":e.current||"","Ops note":e.ops_note||"",Summary:e.summary||"","First seen (UTC)":utc(e.first_seen),"Last seen (UTC)":utc(e.last_seen),"Valid until (UTC)":e.valid_until?utc(e.valid_until):"","Verified (UTC)":e.verified_at?utc(e.verified_at):"","Source items":(e.items||[]).length}));
+  const B=[]; ev.forEach(e=>(e.items||[]).forEach(i=>B.push({"Published (UTC)":utc(i.published_at),Severity:e.severity,Category:e.category,Event:e.title,Source:i.source_name,Tier:i.tier,Text:i.text,URL:i.url||""})));
+  B.sort((a,b)=>b["Published (UTC)"].localeCompare(a["Published (UTC)"]));
+  const s1=XLSX.utils.json_to_sheet(A), s2=XLSX.utils.json_to_sheet(B);
+  s1["!cols"]=[8,10,11,14,22,16,12,60,70,50,50,17,17,17,17,8].map(w=>({wch:w})); s2["!cols"]=[17,9,10,50,26,9,80,50].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,s1,"Events"); XLSX.utils.book_append_sheet(wb,s2,"Source items");
+  XLSX.writeFile(wb,"aviation-alerts-"+dstr()+".xlsx"); msg(ev.length+" events exported to Excel.");
+});
+const L1=s=>String(s==null?"":s).replace(/[–—]/g,"-").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/→/g,"->").replace(/[^\x20-\x7E\u00A0-\u00FF]/g,"");
+$("#bPdf").addEventListener("click",()=>{
+  if(!(window.jspdf&&window.jspdf.jsPDF)){msg("PDF library did not load; check your connection.");return;}
+  const ev=rowsX(), doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"pt",format:"a4"});
+  const flt=[$("#fSev").selectedOptions[0].text,$("#fCat").selectedOptions[0].text,$("#fHours").selectedOptions[0].text,$("#fState").selectedOptions[0].text,country||"All countries",$("#fQ").value?'Search: "'+$("#fQ").value+'"':""].filter(Boolean).join(" | ");
+  doc.setFontSize(16); doc.text("Aviation Security Alerts",36,40); doc.setFontSize(9); doc.setTextColor(90);
+  doc.text(L1("Generated "+utc(Date.now())+" | Last monitoring run "+(status?utc(status.last_run):"n/a")+" | "+ev.length+" events"),36,56); doc.text(L1("Filters: "+flt),36,69);
+  const col={CRITICAL:[179,38,30],HIGH:[194,65,12],MEDIUM:[161,98,7],LOW:[91,107,125]};
+  doc.autoTable({startY:80,theme:"grid",styles:{fontSize:7.5,cellPadding:3,overflow:"linebreak",valign:"top"},headStyles:{fillColor:[31,95,191]},
+    head:[["Severity","Category","Where","Event and current situation","Last report (UTC)","Conf."]],
+    body:ev.map(e=>[e.severity,e.category,L1((e.countries||[]).join(", ")+((e.airports||[]).length?"\n"+e.airports.join(" "):"")),L1(e.title+(e.current?"\n"+e.current:"")),utc(e.last_seen),e.confidence]),
+    columnStyles:{0:{cellWidth:48},1:{cellWidth:52},2:{cellWidth:90},3:{cellWidth:"auto"},4:{cellWidth:70},5:{cellWidth:52}},
+    didParseCell:d=>{if(d.section==="body"&&d.column.index===0){const c=col[d.cell.raw]||col.LOW;d.cell.styles.fillColor=c;d.cell.styles.textColor=255;d.cell.styles.fontStyle="bold";}},
+    didDrawPage:d=>{doc.setFontSize(7);doc.setTextColor(110);doc.text("Open-source awareness only. Verify against official NOTAMs, AIP SUPs and CZIBs before any operational decision.",36,doc.internal.pageSize.getHeight()-18);doc.text("Page "+doc.internal.getNumberOfPages(),doc.internal.pageSize.getWidth()-70,doc.internal.pageSize.getHeight()-18);}});
+  doc.save("aviation-alerts-"+dstr()+".pdf"); msg(ev.length+" events exported to PDF.");
+});
+
+async function setAck(id,status){
+  const say=t=>{const n=$("#ackMsg"); if(n) n.textContent=t;};
+  let by=""; try{by=localStorage.getItem("avName")||"";}catch(e){}
+  if(!by && status!=="NEW"){ by=(prompt("Your name (recorded with the acknowledgement):")||"").trim(); try{localStorage.setItem("avName",by);}catch(e){} }
+  const at=Date.now();
+  if(status==="NEW") localAcks[id]=null; else localAcks[id]={status,by:by||"a colleague",at};
+  try{localStorage.setItem("avAcks",JSON.stringify(localAcks));}catch(e){}
+  mergeAcks(); render();
+  let tok=null; try{tok=localStorage.getItem("avGhTok");}catch(e){}
+  if(!tok){ say("Saved on this browser."); return; }
+  try{
+    const api="https://api.github.com/repos/"+REPO+"/contents/acks.json", H={Authorization:"Bearer "+tok,Accept:"application/vnd.github+json"};
+    let sha, cur={}; const g=await fetch(api+"?ref=main&t="+Date.now(),{headers:H});
+    if(g.ok){ const j=await g.json(); sha=j.sha; try{cur=JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g,"")))))||{};}catch(e){} }
+    if(status==="NEW") delete cur[id]; else cur[id]={status,by:by||"a colleague",at};
+    const p=await fetch(api,{method:"PUT",headers:H,body:JSON.stringify({message:"Acknowledgement update",branch:"main",sha,content:btoa(unescape(encodeURIComponent(JSON.stringify(cur,null,1))))})});
+    if(p.ok){ remoteAcks=cur; delete localAcks[id]; try{localStorage.setItem("avAcks",JSON.stringify(localAcks));}catch(e){} mergeAcks(); render(); say("Shared with everyone (visible after the site refreshes, about 1-2 minutes)."); }
+    else say("Saved on this browser only (GitHub refused: HTTP "+p.status+"). The token needs Contents read & write.");
+  }catch(e){ say("Saved on this browser only (network error)."); }
+}
+</script>
+</body>
+</html>
